@@ -325,9 +325,9 @@ h1 {
 .organizer-card {
   min-width: 0;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: 62px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -341,8 +341,8 @@ h1 {
 
 .organizer-card img {
   width: auto;
-  height: 72px;
-  max-width: 76px;
+  height: 64px;
+  max-width: 62px;
   object-fit: contain;
 }
 
@@ -374,7 +374,7 @@ h1 {
 
 .organizer-card a {
   margin-top: 5px;
-  font-size: clamp(0.78rem, 1vw, 0.88rem);
+  font-size: clamp(0.72rem, 0.9vw, 0.82rem);
   white-space: nowrap;
 }
 
