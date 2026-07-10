@@ -126,7 +126,7 @@ export default function VotePage({ theme, onToggleTheme }) {
         className: 'location-status-text',
         text:
           blockedMessages[locationAccess?.reason] ||
-          'La votación solo está disponible desde Quintanar del Rey, CP 16220.'
+          'No podrás votar hasta que permitas el acceso a tu ubicación. La votación solo está disponible desde Quintanar del Rey'
       };
     }
 
