@@ -195,17 +195,11 @@ export default function AdminPage({ theme, onToggleTheme }) {
                   <dl>
                     <div>
                       <dt>IP</dt>
-                      <dd>{entry.ipHash ? `Hash ${entry.ipHash}` : entry.ip}</dd>
+                      <dd>{entry.ip || 'IP no disponible'}</dd>
                     </div>
                     <div>
                       <dt>Zona</dt>
-                      <dd>
-                        {entry.location?.distanceMeters !== undefined
-                          ? `${entry.location.distanceMeters} m del centro · precisión ${
-                              entry.location.accuracy ?? 'sin dato'
-                            } m`
-                          : entry.timezone}
-                      </dd>
+                      <dd>Quintanar del Rey</dd>
                     </div>
                     <div>
                       <dt>Pantalla</dt>

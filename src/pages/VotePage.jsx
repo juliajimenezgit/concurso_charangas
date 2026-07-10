@@ -59,7 +59,7 @@ export default function VotePage({ theme, onToggleTheme }) {
 
   const handleVote = async (charangaId) => {
     if (!isTestMode && locationStatus !== 'allowed') {
-      setMessage('La votación solo está disponible desde Quintanar del Rey, CP 16220.');
+      setMessage('');
       return;
     }
 
@@ -89,7 +89,7 @@ export default function VotePage({ theme, onToggleTheme }) {
       response.reason === 'location-required' ||
       response.reason === 'location-accuracy-too-low'
     ) {
-      setMessage('La votación solo está disponible desde Quintanar del Rey, CP 16220.');
+      setMessage('');
       return;
     }
 
@@ -105,7 +105,7 @@ export default function VotePage({ theme, onToggleTheme }) {
 
     if (locationStatus === 'checking') {
       return {
-        className: 'notice',
+        className: 'location-status-text',
         text: 'Permite la ubicación para comprobar que estás en Quintanar del Rey, CP 16220.'
       };
     }
@@ -123,7 +123,7 @@ export default function VotePage({ theme, onToggleTheme }) {
       };
 
       return {
-        className: 'notice notice-warning',
+        className: 'location-status-text',
         text:
           blockedMessages[locationAccess?.reason] ||
           'La votación solo está disponible desde Quintanar del Rey, CP 16220.'
