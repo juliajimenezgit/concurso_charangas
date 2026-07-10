@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import adminConfig from '../config/adminConfig.json';
 import { charangas } from '../data/charangas.js';
 import { voteService } from '../services/voteService.js';
 
 const REFRESH_INTERVAL_MS = 4000;
 
 export default function AdminPage({ theme, onToggleTheme }) {
-  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+  const adminPassword = adminConfig.adminPassword;
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -45,7 +46,7 @@ export default function AdminPage({ theme, onToggleTheme }) {
     event.preventDefault();
 
     if (!passwordConfigured) {
-      setAuthError('Configura VITE_ADMIN_PASSWORD para activar el acceso de administración.');
+      setAuthError('Configura adminPassword en src/config/adminConfig.json.');
       return;
     }
 
