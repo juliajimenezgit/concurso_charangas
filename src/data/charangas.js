@@ -3,7 +3,7 @@ import { getAssetUrl } from '../utils/assets.js';
 export const charangas = [
   {
     id: 'escalafit',
-    name: "Xaranga l'Esclafit",
+    name: "Xaranga L'Esclafit",
     logo: getAssetUrl('esclafit_logo.png'),
     shortName: 'Esclafit',
     instagram: {

@@ -27,7 +27,6 @@ const organizerLogos = [
     src: getAssetUrl('quintanar_logo.png'),
     alt: 'Escudo del Ayuntamiento de Quintanar del Rey',
     name: 'Ayuntamiento',
-    wide: true,
     instagram: {
       handle: '@ayto_quintanardelrey',
       url: 'https://www.instagram.com/ayto_quintanardelrey/'
@@ -53,10 +52,7 @@ export default function Header({ theme, onToggleTheme }) {
           </p>
           <div className="organizer-logos" aria-label="Contacto de entidades organizadoras">
             {organizerLogos.map((logo) => (
-              <div
-                className={`organizer-card${logo.wide ? ' organizer-card-wide' : ''}`}
-                key={logo.alt}
-              >
+              <div className="organizer-card" key={logo.alt}>
                 <img
                   src={logo.src}
                   alt={logo.alt}
