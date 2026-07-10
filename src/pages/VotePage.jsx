@@ -7,21 +7,68 @@ import { voteService } from '../services/voteService.js';
 export default function VotePage({ theme, onToggleTheme }) {
   const [deviceVote, setDeviceVote] = useState(null);
   const [message, setMessage] = useState('');
+  const [locationAccess, setLocationAccess] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('checking');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isTestMode = voteService.isTestMode();
 
   useEffect(() => {
-    const storedVote = voteService.getDeviceVote();
-    setDeviceVote(storedVote);
-    if (!isTestMode && storedVote) {
-      setMessage('Ya has votado en este concurso.');
-    }
+    let isActive = true;
+
+    const loadDeviceVote = async () => {
+      const storedVote = await voteService.getDeviceVote();
+
+      if (!isActive) {
+        return;
+      }
+
+      setDeviceVote(storedVote);
+      if (!isTestMode && storedVote) {
+        setMessage('Ya has votado en este concurso.');
+      }
+    };
+
+    loadDeviceVote();
+
+    return () => {
+      isActive = false;
+    };
   }, [isTestMode]);
 
-  const handleVote = (charangaId) => {
-    const response = voteService.vote(charangaId);
+  useEffect(() => {
+    let isActive = true;
+
+    const checkLocation = async () => {
+      setLocationStatus('checking');
+      const access = await voteService.getVotingAccess();
+
+      if (!isActive) {
+        return;
+      }
+
+      setLocationAccess(access);
+      setLocationStatus(access.allowed ? 'allowed' : 'blocked');
+    };
+
+    checkLocation();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const handleVote = async (charangaId) => {
+    if (!isTestMode && locationStatus !== 'allowed') {
+      setMessage('La votación solo está disponible desde Quintanar del Rey, CP 16220.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const response = await voteService.vote(charangaId, locationAccess);
+    setIsSubmitting(false);
 
     if (response.ok) {
-      const storedVote = voteService.getDeviceVote();
+      const storedVote = await voteService.getDeviceVote();
       setDeviceVote(storedVote);
       setMessage(
         isTestMode
@@ -32,10 +79,63 @@ export default function VotePage({ theme, onToggleTheme }) {
     }
 
     if (response.reason === 'already-voted') {
-      setDeviceVote(voteService.getDeviceVote());
+      setDeviceVote(await voteService.getDeviceVote());
       setMessage('Ya has votado en este concurso.');
+      return;
+    }
+
+    if (
+      response.reason === 'outside-allowed-area' ||
+      response.reason === 'location-required' ||
+      response.reason === 'location-accuracy-too-low'
+    ) {
+      setMessage('La votación solo está disponible desde Quintanar del Rey, CP 16220.');
+      return;
+    }
+
+    if (response.reason === 'vote-service-unavailable') {
+      setMessage('No se ha podido registrar el voto. Inténtalo de nuevo en unos segundos.');
     }
   };
+
+  const locationNotice = (() => {
+    if (isTestMode) {
+      return null;
+    }
+
+    if (locationStatus === 'checking') {
+      return {
+        className: 'notice',
+        text: 'Permite la ubicación para comprobar que estás en Quintanar del Rey, CP 16220.'
+      };
+    }
+
+    if (locationStatus === 'blocked') {
+      const blockedMessages = {
+        'location-permission-denied':
+          'Necesitamos permiso de ubicación para permitir el voto desde Quintanar del Rey.',
+        'location-unsupported': 'Este navegador no permite comprobar la ubicación.',
+        'location-timeout': 'No se ha podido obtener tu ubicación a tiempo. Recarga e inténtalo de nuevo.',
+        'location-accuracy-too-low':
+          'La ubicación recibida no tiene precisión suficiente para validar el voto.',
+        'location-check-failed':
+          'No se ha podido comprobar tu ubicación. Por seguridad, la votación queda bloqueada.'
+      };
+
+      return {
+        className: 'notice notice-warning',
+        text:
+          blockedMessages[locationAccess?.reason] ||
+          'La votación solo está disponible desde Quintanar del Rey, CP 16220.'
+      };
+    }
+
+    return null;
+  })();
+
+  const votingDisabled =
+    isSubmitting ||
+    (!isTestMode && (Boolean(deviceVote) || locationStatus !== 'allowed' || !locationAccess?.allowed));
 
   return (
     <div className="app-shell">
@@ -47,6 +147,11 @@ export default function VotePage({ theme, onToggleTheme }) {
           {isTestMode && (
             <div className="notice notice-test" role="status">
               Modo test activo: los votos se suman, pero este dispositivo no queda bloqueado.
+            </div>
+          )}
+          {locationNotice && (
+            <div className={locationNotice.className} role="status">
+              {locationNotice.text}
             </div>
           )}
           {message && (
@@ -61,7 +166,7 @@ export default function VotePage({ theme, onToggleTheme }) {
             <CharangaCard
               key={charanga.id}
               charanga={charanga}
-              disabled={!isTestMode && Boolean(deviceVote)}
+              disabled={votingDisabled}
               selected={!isTestMode && deviceVote?.charangaId === charanga.id}
               onVote={handleVote}
             />

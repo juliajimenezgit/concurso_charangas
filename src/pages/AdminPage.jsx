@@ -11,13 +11,15 @@ export default function AdminPage({ theme, onToggleTheme }) {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [results, setResults] = useState(() => voteService.getResults());
-  const [auditEntries, setAuditEntries] = useState(() => voteService.getAuditEntries());
+  const [results, setResults] = useState(() => voteService.getInitialResults());
+  const [auditEntries, setAuditEntries] = useState([]);
   const [showAudit, setShowAudit] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [adminNotice, setAdminNotice] = useState('');
+  const isTestMode = voteService.isTestMode();
 
-  const passwordConfigured = Boolean(adminPassword);
+  const passwordConfigured = isTestMode ? Boolean(adminPassword) : true;
 
   const winnerText = useMemo(() => {
     if (!results.provisionalWinner) {
@@ -27,9 +29,14 @@ export default function AdminPage({ theme, onToggleTheme }) {
     return `${results.provisionalWinner.name} (${results.provisionalWinner.votes} votos)`;
   }, [results.provisionalWinner]);
 
-  const refreshResults = () => {
-    setResults(voteService.getResults());
-    setAuditEntries(voteService.getAuditEntries());
+  const refreshResults = async (adminPasswordOverride = password) => {
+    const [nextResults, nextAuditEntries] = await Promise.all([
+      voteService.getResults(),
+      voteService.getAuditEntries(adminPasswordOverride)
+    ]);
+
+    setResults(nextResults);
+    setAuditEntries(nextAuditEntries);
     setLastUpdated(new Date());
   };
 
@@ -38,11 +45,13 @@ export default function AdminPage({ theme, onToggleTheme }) {
       return undefined;
     }
 
-    const intervalId = window.setInterval(refreshResults, REFRESH_INTERVAL_MS);
+    const intervalId = window.setInterval(() => {
+      refreshResults();
+    }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, password]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!passwordConfigured) {
@@ -50,10 +59,15 @@ export default function AdminPage({ theme, onToggleTheme }) {
       return;
     }
 
-    if (password === adminPassword) {
+    const passwordIsValid = isTestMode
+      ? password === adminPassword
+      : await voteService.verifyAdminPassword(password);
+
+    if (passwordIsValid) {
       setIsAuthenticated(true);
       setAuthError('');
-      refreshResults();
+      setAdminNotice('');
+      await refreshResults(password);
       return;
     }
 
@@ -64,11 +78,12 @@ export default function AdminPage({ theme, onToggleTheme }) {
     setShowResetModal(true);
   };
 
-  const confirmReset = () => {
-    setResults(voteService.resetVotes());
-    setAuditEntries(voteService.getAuditEntries());
+  const confirmReset = async () => {
+    setResults(await voteService.resetVotes(password));
+    setAuditEntries(await voteService.getAuditEntries(password));
     setLastUpdated(new Date());
     setShowResetModal(false);
+    setAdminNotice('Votos reseteados correctamente.');
   };
 
   const getCharangaName = (charangaId) => {
@@ -119,7 +134,7 @@ export default function AdminPage({ theme, onToggleTheme }) {
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           </div>
           <div className="admin-actions">
-            <button type="button" className="secondary-button" onClick={refreshResults}>
+            <button type="button" className="secondary-button" onClick={() => refreshResults()}>
               Refrescar
             </button>
             <button type="button" className="danger-button" onClick={handleReset}>
@@ -128,6 +143,12 @@ export default function AdminPage({ theme, onToggleTheme }) {
           </div>
         </div>
       </header>
+
+      {adminNotice && (
+        <div className="notice notice-success" role="status">
+          {adminNotice}
+        </div>
+      )}
 
       <section className="stats-grid" aria-label="Resumen de resultados">
         <article className="stat-card">
@@ -158,8 +179,8 @@ export default function AdminPage({ theme, onToggleTheme }) {
             <span>Datos disponibles del dispositivo</span>
           </div>
           <p className="audit-note">
-            La IP pública debe guardarse desde un backend. Esta versión local deja el campo
-            preparado y registra información útil del navegador y dispositivo.
+            Los votos se validan en backend con ubicación GPS y se guardan en la base de datos
+            configurada para la API.
           </p>
           <div className="audit-list">
             {auditEntries.length === 0 ? (
@@ -174,11 +195,17 @@ export default function AdminPage({ theme, onToggleTheme }) {
                   <dl>
                     <div>
                       <dt>IP</dt>
-                      <dd>{entry.ip}</dd>
+                      <dd>{entry.ipHash ? `Hash ${entry.ipHash}` : entry.ip}</dd>
                     </div>
                     <div>
                       <dt>Zona</dt>
-                      <dd>{entry.timezone}</dd>
+                      <dd>
+                        {entry.location?.distanceMeters !== undefined
+                          ? `${entry.location.distanceMeters} m del centro · precisión ${
+                              entry.location.accuracy ?? 'sin dato'
+                            } m`
+                          : entry.timezone}
+                      </dd>
                     </div>
                     <div>
                       <dt>Pantalla</dt>

@@ -2,6 +2,7 @@ import { charangas } from '../data/charangas.js';
 
 const VOTES_STORAGE_KEY = 'charangas:votes:v1';
 const DEVICE_VOTE_KEY = 'charangas:deviceVote:v1';
+const DEVICE_ID_KEY = 'charangas:deviceId:v1';
 const AUDIT_STORAGE_KEY = 'charangas:audit:v1';
 const TEST_MODE = import.meta.env.VITE_TEST_MODE === 'true';
 
@@ -51,110 +52,301 @@ const buildResults = (votes) => {
   };
 };
 
-const getAuditSnapshot = (charangaId) => {
-  /*
-    Browser-only mock audit data.
-    Public IP is not available reliably from the client. In production, record it
-    in your backend/API request handler and store it with the vote server-side.
-  */
-  return {
-    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    charangaId,
-    votedAt: new Date().toISOString(),
-    ip: 'Pendiente de backend',
-    userAgent: window.navigator.userAgent,
-    language: window.navigator.language,
-    platform: window.navigator.platform,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    screen: `${window.screen.width}x${window.screen.height}`,
-    viewport: `${window.innerWidth}x${window.innerHeight}`,
-    referrer: document.referrer || 'Directo / QR',
-    testMode: TEST_MODE
-  };
-};
+const getAuditSnapshot = (charangaId, locationAccess) => ({
+  id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  charangaId,
+  votedAt: new Date().toISOString(),
+  ip: 'Modo test local',
+  userAgent: window.navigator.userAgent,
+  language: window.navigator.language,
+  platform: window.navigator.platform,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  screen: `${window.screen.width}x${window.screen.height}`,
+  viewport: `${window.innerWidth}x${window.innerHeight}`,
+  referrer: document.referrer || 'Directo / QR',
+  locationAllowed: Boolean(locationAccess?.allowed),
+  locationReason: locationAccess?.reason || 'test-mode',
+  location: locationAccess?.location || null,
+  testMode: TEST_MODE
+});
 
 const addAuditEntry = (entry) => {
   const entries = readJson(AUDIT_STORAGE_KEY, []);
   writeJson(AUDIT_STORAGE_KEY, [entry, ...entries]);
 };
 
+const getInitialResults = () => buildResults(emptyVoteMap());
+
+const getDeviceId = () => {
+  const storedDeviceId = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (storedDeviceId) {
+    return storedDeviceId;
+  }
+
+  const nextDeviceId =
+    window.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(DEVICE_ID_KEY, nextDeviceId);
+  return nextDeviceId;
+};
+
+const getClientContext = () => ({
+  userAgent: window.navigator.userAgent,
+  language: window.navigator.language,
+  platform: window.navigator.platform,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  screen: `${window.screen.width}x${window.screen.height}`,
+  viewport: `${window.innerWidth}x${window.innerHeight}`,
+  referrer: document.referrer || 'Directo / QR'
+});
+
+const apiRequest = async (path, options = {}) => {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      accept: 'application/json',
+      ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok && payload.reason) {
+    return payload;
+  }
+
+  return payload;
+};
+
+const requestBrowserLocation = () =>
+  new Promise((resolve) => {
+    if (!window.navigator.geolocation) {
+      resolve({
+        ok: false,
+        reason: 'location-unsupported'
+      });
+      return;
+    }
+
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          ok: true,
+          location: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            capturedAt: new Date().toISOString()
+          }
+        });
+      },
+      (error) => {
+        const reason =
+          error.code === error.PERMISSION_DENIED
+            ? 'location-permission-denied'
+            : error.code === error.TIMEOUT
+              ? 'location-timeout'
+              : 'location-unavailable';
+
+        resolve({
+          ok: false,
+          reason
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 30000
+      }
+    );
+  });
+
+const localVote = (charangaId, locationAccess) => {
+  const validCharanga = charangas.some((charanga) => charanga.id === charangaId);
+  if (!validCharanga) {
+    return {
+      ok: false,
+      reason: 'invalid-charanga',
+      results: buildResults(readJson(VOTES_STORAGE_KEY, emptyVoteMap()))
+    };
+  }
+
+  const votes = normalizeVoteMap(readJson(VOTES_STORAGE_KEY, emptyVoteMap()));
+  votes[charangaId] += 1;
+  writeJson(VOTES_STORAGE_KEY, votes);
+  addAuditEntry(getAuditSnapshot(charangaId, locationAccess));
+
+  return {
+    ok: true,
+    results: buildResults(votes)
+  };
+};
+
 export const voteService = {
-  /*
-    Data access layer prepared for a real backend.
-    Replace the localStorage reads/writes below with Supabase/Firebase calls:
-    - vote(charangaId): insert one vote after validating server-side rules
-    - getResults(): fetch aggregated results
-    - resetVotes(): protected admin action
-    Keep the component API stable so pages do not need to change.
-  */
   isTestMode() {
     return TEST_MODE;
   },
 
-  hasDeviceVoted() {
+  getInitialResults,
+
+  async getVotingAccess() {
     if (TEST_MODE) {
-      return false;
+      return {
+        allowed: true,
+        reason: 'test-mode',
+        allowedArea: {
+          city: 'Quintanar del Rey',
+          postalCode: '16220',
+          country: 'ES'
+        },
+        location: null
+      };
     }
 
-    return Boolean(readJson(DEVICE_VOTE_KEY, null));
+    const browserLocation = await requestBrowserLocation();
+    if (!browserLocation.ok) {
+      return {
+        allowed: false,
+        reason: browserLocation.reason,
+        location: null
+      };
+    }
+
+    try {
+      return apiRequest('/api/location-check', {
+        method: 'POST',
+        body: JSON.stringify({
+          location: browserLocation.location
+        })
+      });
+    } catch {
+      return {
+        allowed: false,
+        reason: 'location-check-failed',
+        location: browserLocation.location
+      };
+    }
   },
 
-  getDeviceVote() {
+  async getDeviceVote() {
     if (TEST_MODE) {
       return null;
     }
 
-    return readJson(DEVICE_VOTE_KEY, null);
+    try {
+      const response = await apiRequest(`/api/my-vote?deviceId=${encodeURIComponent(getDeviceId())}`);
+      return response.deviceVote || readJson(DEVICE_VOTE_KEY, null);
+    } catch {
+      return readJson(DEVICE_VOTE_KEY, null);
+    }
   },
 
-  vote(charangaId) {
-    if (!TEST_MODE && this.hasDeviceVoted()) {
+  async vote(charangaId, locationAccess) {
+    if (TEST_MODE) {
+      return localVote(charangaId, locationAccess);
+    }
+
+    if (!locationAccess?.allowed || !locationAccess?.location) {
       return {
         ok: false,
-        reason: 'already-voted',
-        results: this.getResults()
+        reason: 'outside-allowed-area',
+        results: await this.getResults()
       };
     }
 
-    const validCharanga = charangas.some((charanga) => charanga.id === charangaId);
-    if (!validCharanga) {
-      return {
-        ok: false,
-        reason: 'invalid-charanga',
-        results: this.getResults()
-      };
-    }
-
-    const votes = normalizeVoteMap(readJson(VOTES_STORAGE_KEY, emptyVoteMap()));
-    votes[charangaId] += 1;
-    writeJson(VOTES_STORAGE_KEY, votes);
-    addAuditEntry(getAuditSnapshot(charangaId));
-
-    if (!TEST_MODE) {
-      writeJson(DEVICE_VOTE_KEY, {
-        charangaId,
-        votedAt: new Date().toISOString()
+    try {
+      const response = await apiRequest('/api/vote', {
+        method: 'POST',
+        body: JSON.stringify({
+          charangaId,
+          deviceId: getDeviceId(),
+          location: locationAccess.location,
+          clientContext: getClientContext()
+        })
       });
+
+      if (response.ok && response.deviceVote) {
+        writeJson(DEVICE_VOTE_KEY, response.deviceVote);
+      }
+
+      if (response.reason === 'already-voted' && response.deviceVote) {
+        writeJson(DEVICE_VOTE_KEY, response.deviceVote);
+      }
+
+      return response;
+    } catch {
+      return {
+        ok: false,
+        reason: 'vote-service-unavailable',
+        results: await this.getResults()
+      };
+    }
+  },
+
+  async getResults() {
+    if (TEST_MODE) {
+      return buildResults(readJson(VOTES_STORAGE_KEY, emptyVoteMap()));
     }
 
-    return {
-      ok: true,
-      results: buildResults(votes)
-    };
+    try {
+      const response = await apiRequest('/api/results');
+      return response.results || getInitialResults();
+    } catch {
+      return getInitialResults();
+    }
   },
 
-  getResults() {
-    return buildResults(readJson(VOTES_STORAGE_KEY, emptyVoteMap()));
+  async getAuditEntries(adminPassword) {
+    if (TEST_MODE) {
+      return readJson(AUDIT_STORAGE_KEY, []);
+    }
+
+    try {
+      const response = await apiRequest('/api/audit', {
+        headers: {
+          'x-admin-password': adminPassword || ''
+        }
+      });
+      return response.auditEntries || [];
+    } catch {
+      return [];
+    }
   },
 
-  getAuditEntries() {
-    return readJson(AUDIT_STORAGE_KEY, []);
+  async verifyAdminPassword(adminPassword) {
+    if (TEST_MODE) {
+      return true;
+    }
+
+    try {
+      const response = await apiRequest('/api/audit', {
+        headers: {
+          'x-admin-password': adminPassword || ''
+        }
+      });
+
+      return Boolean(response.ok);
+    } catch {
+      return false;
+    }
   },
 
-  resetVotes() {
-    writeJson(VOTES_STORAGE_KEY, emptyVoteMap());
-    writeJson(AUDIT_STORAGE_KEY, []);
+  async resetVotes(adminPassword) {
+    if (TEST_MODE) {
+      writeJson(VOTES_STORAGE_KEY, emptyVoteMap());
+      writeJson(AUDIT_STORAGE_KEY, []);
+      window.localStorage.removeItem(DEVICE_VOTE_KEY);
+      return this.getResults();
+    }
+
+    const response = await apiRequest('/api/reset', {
+      method: 'POST',
+      headers: {
+        'x-admin-password': adminPassword || ''
+      }
+    });
+
     window.localStorage.removeItem(DEVICE_VOTE_KEY);
-    return this.getResults();
+    return response.results || getInitialResults();
   }
 };

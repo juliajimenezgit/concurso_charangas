@@ -12,7 +12,7 @@ export default function SplashScreen() {
           <span />
           <span />
         </div>
-        <p>Redirigiendo a la votación del concurso...</p>
+        <p><strong>Maimonet</strong> te está redirigiendo a la votación del concurso...</p>
       </div>
     </main>
   );
