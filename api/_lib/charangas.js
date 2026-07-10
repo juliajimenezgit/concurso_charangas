@@ -1,8 +1,8 @@
 export const charangas = [
   {
     id: 'escalafit',
-    name: "Xaranga l'Escalafit",
-    shortName: 'Escalafit'
+    name: "Xaranga l'Esclafit",
+    shortName: 'Esclafit'
   },
   {
     id: 'terreta',

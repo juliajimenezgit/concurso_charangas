@@ -7,7 +7,7 @@ const assetUrls = import.meta.glob(
     '../assets/eresmas_logo.png',
     '../assets/qtt_logo.png',
     '../assets/quintanar_logo.png',
-    '../assets/escalafit_logo.png',
+    '../assets/esclafit_logo.png',
     '../assets/terreta_logo.png',
     '../assets/tocapum_logo.png',
     '../assets/cabezones_logo.png'

@@ -3,9 +3,9 @@ import { getAssetUrl } from '../utils/assets.js';
 export const charangas = [
   {
     id: 'escalafit',
-    name: "Xaranga l'Escalafit",
-    logo: getAssetUrl('escalafit_logo.png'),
-    shortName: 'Escalafit',
+    name: "Xaranga l'Esclafit",
+    logo: getAssetUrl('esclafit_logo.png'),
+    shortName: 'Esclafit',
     instagram: {
       handle: '@xaranga_esclafit',
       url: 'https://www.instagram.com/xaranga_esclafit/'
